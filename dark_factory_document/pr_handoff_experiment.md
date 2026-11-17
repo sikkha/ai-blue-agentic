@@ -16,7 +16,9 @@ the code.
 |---|---|---|
 | Branch | `band/claude-engineer` | `band/codex-engineer` |
 | Worktree | its own | its own |
-| Role | implements and tests | reviews and can improve the change |
+
+Roles were assigned per experiment and swapped between them: Claude wrote and
+Codex reviewed in PR #1, and Codex wrote and Claude reviewed in PR #2.
 
 Coordination happened in a Band room that also included the human maintainer.
 Neither working branch was deleted after merging.
@@ -31,8 +33,9 @@ used. As a result:
 - Neither PR has a GitHub review or an independent GitHub approval (0 reviews on each).
 - The review evidence is the Band conversation, plus the commit history.
 
-Separate GitHub identities for the two agents would be needed to get a recorded
-GitHub approval.
+With separate GitHub accounts, the agents could approve each other's PRs.
+Another eligible GitHub user could also provide an independent approval. Either
+would give a recorded GitHub approval.
 
 ## Experiment 1: PR #1 (Claude writes, Codex reviews)
 
@@ -88,7 +91,11 @@ Results:
   re-review after a fix was cheap.
 - The only substantive review finding came in PR #1 and was a wording accuracy
   issue.
-- One session was interrupted before its edit was saved. Inspecting the diff on
-  resume showed it was empty, so the edit was re-applied without duplication.
-- Independent review on GitHub is not yet possible. The two agents need separate
-  GitHub identities for that.
+- Interruptions happened in both experiments. In PR #1, Claude's session was
+  cut off before its README edit was saved; inspecting the diff on resume showed
+  it was empty, so the edit was re-applied without duplication. In PR #2,
+  Codex's first attempt stopped at the Git fetch approval, before any README
+  edit. On resume it verified a clean worktree, fetched `main`, and made the
+  edit for the first time.
+- Independent GitHub review is not yet possible with one shared identity. It
+  needs separate agent accounts or another eligible GitHub user.
