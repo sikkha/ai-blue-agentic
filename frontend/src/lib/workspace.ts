@@ -1,3 +1,5 @@
+import { authFetch } from "@/lib/auth"
+
 // The notes workspace: backend/app.py's /api/workspace/* contract. Paths are workspace-relative, "/"-separated.
 
 export type TreeNode = {
@@ -79,7 +81,7 @@ export class ConflictError extends Error {
 }
 
 async function call<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init)
+  const res = await authFetch(url, init)
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     const detail = body?.detail
@@ -136,7 +138,7 @@ export const workspace = {
     folder = "",
     signal?: AbortSignal
   ): AsyncGenerator<BuildEvent> {
-    const res = await fetch("/api/workspace/graph/build", {
+    const res = await authFetch("/api/workspace/graph/build", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ folder }),

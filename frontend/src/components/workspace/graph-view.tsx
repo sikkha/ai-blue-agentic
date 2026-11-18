@@ -47,7 +47,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 export type GraphViewProps = {
   data: GraphData | null
   onOpenNote(path: string): void
-  onBuild(): void
+  onBuild?(): void
   building: boolean
   progress?: { done: number; total: number; tokens: number } | null
 }
@@ -465,7 +465,7 @@ export function GraphView({
     )
 
   const { stats } = data
-  const build = (stats.pending > 0 || building) && (
+  const build = onBuild && (stats.pending > 0 || building) && (
     <Button variant="outline" size="sm" onClick={onBuild} disabled={building}>
       {building ? (
         <Spinner data-icon="inline-start" />

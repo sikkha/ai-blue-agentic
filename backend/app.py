@@ -51,6 +51,7 @@ reads the config afresh. Everything is validated before a byte is written.
 """
 import hashlib
 import json
+import os
 import queue
 import shutil
 import tempfile
@@ -61,9 +62,8 @@ from contextlib import closing
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from fastapi import Body, FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi import Body, FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
 
@@ -118,9 +118,13 @@ def decorate(parts: list[dict], reg: dict) -> list[dict]:
 class Turn:
     """One message being worked on: its event queue and the approvals it is waiting for."""
 
-    def __init__(self, session: str | None):
+    def __init__(self, session: str | None, active=lambda: True):
         self.id, self.session, self.events, self.gates = uuid.uuid4().hex[:12], session, queue.Queue(), {}
         self.stop = threading.Event()
+        self.active = active
+
+    def cancelled(self):
+        return self.stop.is_set() or not self.active()
 
     def put(self, event: dict) -> None:
         self.events.put(event)
@@ -131,9 +135,9 @@ class Turn:
             gate["event"].set()
 
 
-def create_app(config: str = main.DEFAULT_CONFIG) -> FastAPI:
-    app = FastAPI(title="mini-agent", docs_url="/api/docs", openapi_url="/api/openapi.json")
-    uploads = Path(tempfile.mkdtemp(prefix="mini-agent-uploads-"))
+def _create_workspace_app(config: str, *, uploads: Path | None = None) -> FastAPI:
+    app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+    uploads = uploads or Path(tempfile.mkdtemp(prefix="mini-agent-uploads-"))
     turns: dict[str, Turn] = {}                      # live turns, by turn id
     approvals: dict[str, dict] = {}                  # pending approval id -> gate
     lock = threading.Lock()
@@ -218,6 +222,8 @@ def create_app(config: str = main.DEFAULT_CONFIG) -> FastAPI:
     def upload(file: UploadFile = File(...)):
         name = Path(file.filename or "file").name or "file"
         fid = uuid.uuid4().hex[:12]
+        if file.size is not None and file.size > MAX_UPLOAD:
+            raise HTTPException(413, f"The file exceeds the {MAX_UPLOAD // 2**20} MiB limit")
         dest = uploads / fid / name
         dest.parent.mkdir(parents=True)
         with dest.open("wb") as out:
@@ -229,7 +235,9 @@ def create_app(config: str = main.DEFAULT_CONFIG) -> FastAPI:
         return {"id": fid, "name": name, "size": size}
 
     def upload_path(fid: str) -> str:
-        found = list((uploads / Path(fid).name).glob("*")) if fid else []
+        found = list((uploads / fid).glob("*")) if isinstance(fid, str) and len(fid) == 12 and all(
+            character in "0123456789abcdef" for character in fid
+        ) else []
         if not found:
             raise HTTPException(404, f"no uploaded file '{fid}' (uploads last until the server stops)")
         return str(found[0])
@@ -253,6 +261,8 @@ def create_app(config: str = main.DEFAULT_CONFIG) -> FastAPI:
             turn.put(event)
 
         def confirm(tool, args):
+            if turn.cancelled():
+                return "deny", "the browser session ended"
             aid = uuid.uuid4().hex[:12]
             gate = {"event": threading.Event(), "answer": ("deny", f"no answer within {APPROVAL_WAIT} s")}
             turn.gates[aid] = approvals[aid] = gate
@@ -263,10 +273,12 @@ def create_app(config: str = main.DEFAULT_CONFIG) -> FastAPI:
             gate["event"].wait(APPROVAL_WAIT)
             approvals.pop(aid, None)
             turn.gates.pop(aid, None)
+            if turn.cancelled():
+                return "deny", "the browser session ended"
             return gate["answer"]
 
         env = {"cfg": cfg, "trace_db": conn, "log": log, "emit": emit, "model": model_name(cfg), "as_json": True}
-        kw = {"log": log, "confirm": confirm, "trace_db": conn, "emit": emit, "cancel": turn.stop.is_set, "scope": scope}
+        kw = {"log": log, "confirm": confirm, "trace_db": conn, "emit": emit, "cancel": turn.cancelled, "scope": scope}
         started = time.time()
         try:
             log(f"\n##### {datetime.now().isoformat(timespec='seconds')} workflow={cfg['name']} (web) "
@@ -289,19 +301,21 @@ def create_app(config: str = main.DEFAULT_CONFIG) -> FastAPI:
         try:
             yield f"data: {json.dumps({'type': 'turn', 'turn': turn.id})}\n\n"
             while True:
+                if not turn.active():
+                    return
                 try:
                     event = turn.events.get(timeout=15)
                 except queue.Empty:
                     yield ": still working\n\n"          # keeps proxies from closing a quiet stream
                     continue
-                if event is None:
+                if event is None or not turn.active():
                     return
                 yield f"data: {json.dumps(event, ensure_ascii=False, default=str)}\n\n"
         finally:
             turn.release("the browser disconnected")    # never leave the worker waiting on a closed tab
 
     @app.post("/api/chat")
-    def chat(body: dict = Body(...)):
+    def chat(request: Request, body: dict = Body(...)):
         text = str(body.get("message") or "").strip()
         sid, hint = body.get("session"), bool(body.get("hint"))
         scope = str(body.get("scope") or "").strip("/")
@@ -321,7 +335,7 @@ def create_app(config: str = main.DEFAULT_CONFIG) -> FastAPI:
                 raise HTTPException(409, str(e))
             finally:
                 conn.close()
-        turn = Turn(sid)
+        turn = Turn(sid, getattr(request.state, "session_active", lambda: True))
         with lock:
             if sid and any(t.session == sid for t in turns.values()):
                 raise HTTPException(409, f"session {sid} is still working on the last message")
@@ -592,7 +606,7 @@ def create_app(config: str = main.DEFAULT_CONFIG) -> FastAPI:
         return tool_call(tools.workspace_graph(ctx).view, folder)
 
     @app.post("/api/workspace/graph/build")
-    def workspace_graph_build(body: dict = Body(default={})):
+    def workspace_graph_build(request: Request, body: dict = Body(default={})):
         cfg = load()
         ctx, folder = notes(cfg), str((body or {}).get("folder") or "").strip("/")
         if not graph_lock.acquire(blocking=False):
@@ -601,11 +615,13 @@ def create_app(config: str = main.DEFAULT_CONFIG) -> FastAPI:
         graph = tools.workspace_graph(ctx)
         events: queue.Queue = queue.Queue()
         stop = threading.Event()
+        active = getattr(request.state, "session_active", lambda: True)
         budget = int((cfg.get("rag") or {}).get("graph_budget_tokens", 50_000))
 
         def run():
             try:
-                stats = graph.build(folder, budget_tokens=budget, progress=events.put, should_stop=stop.is_set,
+                stats = graph.build(folder, budget_tokens=budget, progress=events.put,
+                                    should_stop=lambda: stop.is_set() or not active(),
                                     model=model_name({**cfg, "llm": {"role": "extractor"}}))
                 events.put({"type": "done", **stats})
             except Exception as e:
@@ -616,13 +632,13 @@ def create_app(config: str = main.DEFAULT_CONFIG) -> FastAPI:
 
         def stream():
             try:
-                while True:
+                while active():
                     try:
                         event = events.get(timeout=15)
                     except queue.Empty:
                         yield ": still reading\n\n"
                         continue
-                    if event is None:
+                    if event is None or not active():
                         return
                     yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
             finally:
@@ -632,20 +648,16 @@ def create_app(config: str = main.DEFAULT_CONFIG) -> FastAPI:
         return StreamingResponse(stream(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
-    # ---- the page ---------------------------------------------------------------------------------
-    if (UI_DIST / "index.html").exists():
-        app.mount("/", StaticFiles(directory=UI_DIST, html=True), name="ui")
-    else:
-        @app.get("/")
-        def not_built():
-            return PlainTextResponse("The web UI is not built yet. Build it once (needs Node.js):\n\n"
-                                     "    npm --prefix frontend ci\n    npm --prefix frontend run build\n\n"
-                                     "then restart: python main.py serve\nThe API is up: /api/docs", status_code=503)
     return app
 
 
 def serve(config: str = main.DEFAULT_CONFIG, host: str = "127.0.0.1", port: int = 8000) -> None:
     import uvicorn
+
+    from backend.web import create_app
+
     print(f"mini-agent web UI on http://{host}:{port}" + ("" if (UI_DIST / "index.html").exists()
           else "  (UI not built: npm --prefix frontend ci && npm --prefix frontend run build)"), flush=True)
-    uvicorn.run(create_app(config), host=host, port=port, log_level="warning")
+    directory = config_path(os.getenv("AIBLUE_AUTH_DIR", "sandbox/web-auth"))
+    origin = os.getenv("AIBLUE_WEB_ORIGIN", f"http://localhost:{port}")
+    uvicorn.run(create_app(config, directory=directory, origin=origin), host=host, port=port, log_level="warning")

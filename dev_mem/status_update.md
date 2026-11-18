@@ -4,6 +4,22 @@
 
 ---
 
+## 18 พ.ย. 2569 — เผยแพร่หน้าแนะนำ AI-Blue บน GCP
+
+หน้า [AI-Blue](https://public.geopolitics.io/) เผยแพร่จาก commit `77eb6783f02199fbedebbee39ff46b89221e264e`
+เป็นหน้า HTML แบบอ่านอย่างเดียวที่ Nginx ให้บริการ ส่วน React UI และ FastAPI ทำงานใน `ai-blue.service`
+ที่ `127.0.0.1:8180` สำหรับผู้มีสิทธิ์ SSH หน้าเว็บสาธารณะไม่มีเส้นทางไปยัง API, แชต หรือ workspace
+
+ตรวจแล้วว่า HTTPS ของหน้าสาธารณะตอบ 200 และเส้นทาง API ที่ทดสอบตอบ 404 ส่วน `internal.geopolitics.io`
+ยังใช้ Cloudflare Access และ `research.geopolitics.io` ตอบ 200 การทดสอบ Python ผ่าน 268 รายการ
+และ 6 subtests รวมทั้ง Ruff, ESLint และ frontend build
+
+โค้ดหน้าเว็บใน checkout เพิ่มบัญชี native, ผู้ดูแลระบบ, session/CSRF และ workspace แยกตามบัญชีแล้ว
+ยังใช้หน้าแนะนำใน production ระหว่างรอใบรับรอง origin, การอนุญาต ingress 443 และ Full (strict) เฉพาะ hostname
+ขั้นตอนสร้างผู้ดูแลและ rollback อยู่ใน [`deploy/native-auth.md`](../deploy/native-auth.md)
+
+---
+
 ## สัปดาห์ที่ 4 (13–14 ต.ค. 2569) — โครง AI-Blue, workspace ของโน้ต และ GraphRAG
 
 **สถานะ:** เสร็จ · 268 offline tests · ruff, ESLint + @shadcn/lint, build · CI

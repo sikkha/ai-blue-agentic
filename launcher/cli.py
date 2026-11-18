@@ -386,6 +386,17 @@ def cmd_serve(a) -> int:
     return 0
 
 
+def cmd_bootstrap_admin(a) -> int:
+    from backend.accounts import bootstrap
+
+    try:
+        bootstrap(config_path(os.getenv("AIBLUE_AUTH_DIR", "sandbox/web-auth")), a.username)
+    except ValueError as error:
+        sys.exit(str(error))
+    print("Administrator created.")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="command", required=True)
@@ -432,6 +443,10 @@ def main():
     sv.add_argument("--host", default="127.0.0.1", help="127.0.0.1 keeps it on this machine (default)")
     sv.add_argument("--config", default=DEFAULT_CONFIG, help=cfg_help)
     sv.set_defaults(func=cmd_serve)
+
+    admin = sub.add_parser("bootstrap-admin", help="create the first web administrator interactively")
+    admin.add_argument("username")
+    admin.set_defaults(func=cmd_bootstrap_admin)
 
     a = ap.parse_args()
     sys.exit(a.func(a) or 0)
