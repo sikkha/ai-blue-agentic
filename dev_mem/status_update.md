@@ -4,6 +4,17 @@
 
 ---
 
+## 18 พ.ย. 2569 (18 November 2026) — เปิดใช้งาน AI-Blue พร้อมบัญชี native บน GCP
+
+- **รุ่นที่ให้บริการ:** [AI-Blue](https://public.geopolitics.io/) ใช้ commit `60ead4f51f932f8c4cdc5438fa92071f0f6f2070` ที่ `/opt/ai-blue/native-current` โดย Nginx ส่งคำขอไปยัง `ai-blue-native.service` บน `127.0.0.1:8186` บัญชีใช้ Argon2id และ session ฝั่งเซิร์ฟเวอร์พร้อม CSRF แยก workspace และสิทธิ์ agent ตามบัญชี การแก้บัญชีต้องมี session ผู้ดูแลที่ยังใช้ได้ และจำกัดความถี่ลงชื่อเข้าใช้ตามคู่ชื่อผู้ใช้กับ IP
+- **GCP และ Cloudflare:** ผู้ดูแลรายงานว่า TCP 443 เปิดรับเฉพาะช่วง IPv4 ของ Cloudflare และการเชื่อมตรงจาก Mac หมดเวลา Cloudflare Rule simulator แสดงว่า Strict ตรงกับ hostname นี้ คำขอทดสอบใหม่ผ่าน Cloudflare บันทึกที่ origin ว่าใช้ `443`, `https`, `TLSv1.3` หน้าแนะนำเดิมตอบ 200 และ workspace API ตอบ 404 ก่อนเปลี่ยนเส้นทาง ตัวจับเวลาต่ออายุใบรับรองยังทำงาน
+- **ตรวจอัตโนมัติ:** ตรวจไฟล์ใน release ทั้ง 221 รายการกับ commit และตรวจ Nginx ผ่าน ตัวตรวจภายนอกเห็นหน้า React และได้ 401 จาก API workspace และบัญชีผู้ดูแลเมื่อยังไม่ลงชื่อเข้าใช้ `internal.geopolitics.io` ยังเปลี่ยนเส้นทางไปลงชื่อเข้าใช้ (302) และ `research.geopolitics.io` ตอบ 200 รุ่นที่ให้บริการผ่าน CI และชุดทดสอบ Python 279 รายการกับ 6 subtests
+- **ตรวจผ่านเบราว์เซอร์:** ผู้ดูแลยืนยันว่า `kan` ลงชื่อเข้าใช้ผ่าน hostname สาธารณะได้ เปิด workspace แล้วเห็นโน้ตสองรายการและกราฟ
+- **ตรวจ agent ใน production:** บัญชี `kan` เปิดสิทธิ์ agent และโปรเซสที่ให้บริการได้รับค่า `GROQ_API_KEY` แล้ว trace มีหนึ่ง session สถานะ `done` และสี่ขั้นจากโมเดลที่รายงานการใช้รวม 5,661 tokens จึงยืนยันการเรียกโมเดลจริงสำหรับ turn นี้ การทดสอบ upload และการอนุมัติเครื่องมือกับโมเดลจริงผ่านเบราว์เซอร์ยังไม่มีหลักฐานยืนยัน
+- **ย้อนกลับ:** ใช้ `/var/backups/ai-blue/native-auth-rollbacks/overview-tls-cloudflare.conf` ซึ่งเก็บ origin TLS, ขอบเขตการเข้าถึงของ Cloudflare และเส้นทางต่ออายุใบรับรอง ขั้นตอนอยู่ใน [คู่มือการติดตั้ง](../deploy/native-auth.md)
+
+---
+
 ## 18 พ.ย. 2569 — เผยแพร่หน้าแนะนำ AI-Blue บน GCP
 
 หน้า [AI-Blue](https://public.geopolitics.io/) เผยแพร่จาก commit `77eb6783f02199fbedebbee39ff46b89221e264e`

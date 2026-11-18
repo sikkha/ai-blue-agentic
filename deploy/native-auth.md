@@ -1,6 +1,10 @@
 # Native web authentication
 
-FastAPI owns the login and session boundary. Nginx forwards the site on an HTTPS origin; Cloudflare provides proxied DNS and edge TLS. The app uses a separate SQLite database for account, session and login-attempt records. Existing trace databases are left intact. Each new account gets its own notes, trace database, runtime settings, upload directory and live tool approval queue. Administrators manage accounts and their own workspace settings. Account administration does not grant access to other users’ workspace data.
+FastAPI owns the login and session boundary. Nginx forwards the site on an HTTPS origin. Cloudflare provides proxied DNS and edge TLS. The app uses a separate SQLite database for account, session and login-attempt records. Each account has its own notes, trace database, runtime settings, upload directory and live tool approval queue. Administrators manage accounts and their own workspace settings. Account administration does not grant access to other users’ workspace data.
+
+## Current production route
+
+`https://public.geopolitics.io/` serves the React sign-in page from `ai-blue-native.service` on `127.0.0.1:8186`. Release `60ead4f51f932f8c4cdc5438fa92071f0f6f2070` is installed under `/opt/ai-blue/releases/` and selected by `/opt/ai-blue/native-current`. The previous service on port 8180 is separate. The public vhost is `/etc/nginx/conf.d/public-geopolitics.conf`. See the [deployment record](../dev_mem/status_update.md) for verified production behavior.
 
 ## Authorization map
 
@@ -29,13 +33,23 @@ Every authenticated write requires both the configured origin and the session’
 
    Save a protected backup of `accounts.sqlite3` before future migrations. Provision other accounts in the Users screen. Give agent access only to the intended accounts. Do not seed account data by copying the existing shared notes or trace directories. A release operator can review and import selected notes into individual accounts separately if authorized.
 
-## Origin and cutover
+## Origin and future releases
 
-- Preserve the existing Nginx configuration, release/service definition, and overview plus its TLS rollback template. Do not use the staged Cloudflare Access JWT proxy or install its verifier service for native authentication.
-- Install the hostname-specific origin certificate signed from the existing CSR. Approve and verify TCP 443 ingress restricted to Cloudflare’s published IP ranges. Create `/etc/ai-blue/cloudflare-real-ip.conf` with `set_real_ip_from` entries for those ranges only. Rate limits use the validated client IP passed by Nginx. Keep the backend port private. [Cloudflare proxy networks](https://www.cloudflare.com/ips/)
-- Keep DNS proxied. In the approved window, first verify origin HTTPS with the static overview, then enable Cloudflare Full (strict) and HTTP-to-HTTPS redirection scoped to `public.geopolitics.io`. Bypass edge caching for the hostname’s HTML and API. Leave internal and research rules in place. [Cloudflare Full (strict)](https://developers.cloudflare.com/ssl/origin-configuration/ssl-modes/full-strict/)
-- Validate the native backend on loopback before replacing the existing public vhost with `deploy/nginx/ai-blue-native.conf`. Run `nginx -t` before a graceful reload. Test the login shell and signed-out API denial from an external client, valid team sign-in and workspace, uploads, SSE and approvals, and direct-origin rejection. Verify the internal and research sites again. Real model calls require provider credentials.
-- For rollback while Cloudflare uses Full (strict), restore `/opt/ai-blue/access-stage/public-geopolitics.overview-tls.conf.template` to `/etc/nginx/conf.d/public-geopolitics.conf`, validate with `nginx -t` and reload Nginx. Verify the static overview and API 404 before restoring the prior backend service definition if needed. Keep the native account database and per-account workspace files for a later attempt. The earlier HTTP-only overview backup is suitable only after reverting the hostname’s origin TLS mode.
+- Preserve the active Nginx vhost, current release pointer and unit, and verified TLS overview backup before changing the public route. Native authentication is enforced by FastAPI.
+- Keep the hostname-specific origin certificate, Cloudflare-only TCP 443 ingress, and `/etc/ai-blue/cloudflare-real-ip.conf` up to date. Nginx trusts client-IP headers only from the configured Cloudflare ranges. Rate limits use that validated IP. The backend stays on loopback. [Cloudflare proxy networks](https://www.cloudflare.com/ips/)
+- Keep DNS proxied and Strict scoped to `public.geopolitics.io`. Confirm origin HTTPS with an uncached, uniquely tagged request and Nginx's `$server_port`, `$scheme`, and `$ssl_protocol`. Bypass edge caching for the hostname’s HTML and API. Leave internal and research rules in place. [Cloudflare Full (strict)](https://developers.cloudflare.com/ssl/origin-configuration/ssl-modes/full-strict/)
+- Validate the candidate backend on loopback before changing the release pointer or the vhost. Use `deploy/nginx/ai-blue-native.conf` as the native proxy and run `nginx -t` before a graceful reload. Test the login shell and signed-out API denial from an external client. Check team sign-in, workspace, uploads, SSE, approvals, and direct-origin rejection. Verify the internal and research sites again. Test an actual model call if a provider credential is configured.
+
+## Roll back to the TLS overview
+
+Restore the verified overview vhost. It keeps origin HTTPS on port 443, a Cloudflare source allowlist, and the ACME challenge route.
+
+```sh
+sudo install -m 0644 /var/backups/ai-blue/native-auth-rollbacks/overview-tls-cloudflare.conf /etc/nginx/conf.d/public-geopolitics.conf
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Verify the public overview returns 200 and both `/api/workspace/tree` and `/api/auth/users` return 404. If needed, stop the native service or restore its previous release separately. Retain the native account database and per-account workspace files. Use the HTTP-only backup only after reverting the hostname’s origin TLS mode.
 
 ## Login limits and certificate renewal
 
