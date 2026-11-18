@@ -15,7 +15,7 @@ def deployment(tmp_path):
     root = tmp_path / 'auth'
     app = create_app('config/workflow.yaml', directory=root, origin=ORIGIN)
     store = Accounts(root)
-    store.create('operator', PASSWORD, 'ADMIN', bootstrap=True)
+    store.bootstrap_admin('operator', PASSWORD)
     return app, store
 
 
@@ -106,8 +106,9 @@ def test_roles_feature_assignment_reset_and_disable(deployment):
 
 def test_data_and_approval_ids_are_per_account(deployment, monkeypatch):
     app, store = deployment
-    first = store.create('first', PASSWORD, 'USER', agent_enabled=True)
-    store.create('second', PASSWORD, 'USER', agent_enabled=True)
+    token, _ = store.login('operator', PASSWORD, 'setup')
+    first = store.create('first', PASSWORD, 'USER', agent_enabled=True, admin_token=token)
+    store.create('second', PASSWORD, 'USER', agent_enabled=True, admin_token=token)
     original = Workspaces.build
     built = {}
 
@@ -135,7 +136,8 @@ def test_data_and_approval_ids_are_per_account(deployment, monkeypatch):
 
 def test_expired_cookie_and_previous_browser_session_cannot_read(deployment):
     app, store = deployment
-    store.create('member', PASSWORD, 'USER')
+    token, _ = store.login('operator', PASSWORD, 'setup')
+    store.create('member', PASSWORD, 'USER', admin_token=token)
     with TestClient(app, base_url=ORIGIN) as client:
         previous = sign_in(client, 'operator').json()['csrf']
         assert sign_in(client, 'member').status_code == 200

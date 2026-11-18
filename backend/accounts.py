@@ -77,33 +77,42 @@ class Accounts:
             db.close()
 
     def require_admin(self, db, token):
-        if token is not None and not db.execute(
+        if not token or len(token) != 43 or not db.execute(
             "SELECT 1 FROM auth_sessions JOIN users ON users.id=user_id "
             "WHERE token_hash=? AND expires_at>? AND enabled=1 AND role='ADMIN'",
             (digest(token), int(time.time())),
         ).fetchone():
             raise PermissionError('Administrator access required.')
 
-    def create(self, username, password, role, agent_enabled=False, *, bootstrap=False, admin_token=None):
-        username = normalize_username(username)
-        hashed = password_hash(password)
+    def bootstrap_admin(self, username, password):
+        name, hashed = normalize_username(username), password_hash(password)
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            if db.execute('SELECT 1 FROM users LIMIT 1').fetchone():
+                raise ValueError('An account already exists. Use an administrator account to manage users.')
+            return self.insert_user(db, name, hashed, 'ADMIN', False)
+
+    def create(self, username, password, role, agent_enabled=False, *, admin_token):
+        name, hashed = normalize_username(username), password_hash(password)
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             self.require_admin(db, admin_token)
-            if bootstrap and db.execute('SELECT 1 FROM users LIMIT 1').fetchone():
-                raise ValueError('An account already exists. Use an administrator account to manage users.')
-            try:
-                cursor = db.execute('INSERT INTO users(username,password_hash,role,agent_enabled) VALUES (?,?,?,?)',
-                                    (username, hashed, role, agent_enabled))
-            except sqlite3.IntegrityError as error:
-                raise ValueError('That username is already in use.') from error
-            return profile(db.execute('SELECT * FROM users WHERE id=?', (cursor.lastrowid,)).fetchone())
+            return self.insert_user(db, name, hashed, role, agent_enabled)
+
+    @staticmethod
+    def insert_user(db, username, hashed, role, agent_enabled):
+        try:
+            cursor = db.execute('INSERT INTO users(username,password_hash,role,agent_enabled) VALUES (?,?,?,?)',
+                                (username, hashed, role, agent_enabled))
+        except sqlite3.IntegrityError as error:
+            raise ValueError('That username is already in use.') from error
+        return profile(db.execute('SELECT * FROM users WHERE id=?', (cursor.lastrowid,)).fetchone())
 
     def users(self):
         with self.connect() as db:
             return [profile(row) for row in db.execute('SELECT * FROM users ORDER BY username')]
 
-    def update(self, user_id, *, role=None, enabled=None, agent_enabled=None, password=None, admin_token=None):
+    def update(self, user_id, *, role=None, enabled=None, agent_enabled=None, password=None, admin_token):
         hashed = password_hash(password) if password is not None else None
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
@@ -123,29 +132,27 @@ class Accounts:
                 db.execute('DELETE FROM auth_sessions WHERE user_id=?', (user_id,))
             return profile(db.execute('SELECT * FROM users WHERE id=?', (user_id,)).fetchone())
 
-    def charge(self, username, address, now):
+    def charge(self, bucket, now):
         start = now - now % ATTEMPT_WINDOW
-        buckets = [('global', 120), (f'ip:{digest(address)}', 30), (f'user:{digest(username)}', 5)]
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             db.execute('DELETE FROM login_attempts WHERE window_start < ?', (start,))
-            for bucket, limit in buckets:
-                row = db.execute('SELECT count FROM login_attempts WHERE bucket=?', (bucket,)).fetchone()
-                if row and row['count'] >= limit:
-                    raise RateLimited
-            db.executemany('INSERT INTO login_attempts VALUES (?, ?, 1) '
-                           'ON CONFLICT(bucket) DO UPDATE SET count=count+1',
-                           [(bucket, start) for bucket, _ in buckets])
+            row = db.execute('SELECT count FROM login_attempts WHERE bucket=?', (bucket,)).fetchone()
+            if row and row['count'] >= 5:
+                raise RateLimited
+            db.execute('INSERT INTO login_attempts VALUES (?, ?, 1) '
+                       'ON CONFLICT(bucket) DO UPDATE SET count=count+1', (bucket, start))
 
     def login(self, username, password, address, old_token=None):
         candidate = username.strip().lower()
         now = int(time.time())
-        self.charge(candidate, address, now)
-        with self.connect() as db:
-            user = db.execute('SELECT * FROM users WHERE username=? AND enabled=1', (candidate,)).fetchone()
+        bucket = f'pair:{digest(address + chr(0) + candidate)}'
         if not self.hash_slots.acquire(blocking=False):
             raise RateLimited
         try:
+            self.charge(bucket, now)
+            with self.connect() as db:
+                user = db.execute('SELECT * FROM users WHERE username=? AND enabled=1', (candidate,)).fetchone()
             try:
                 valid = HASHER.verify(user['password_hash'] if user else self.dummy_hash, password)
             except (VerificationError, InvalidHashError):
@@ -162,6 +169,7 @@ class Accounts:
                                 (user['id'], user['password_hash'])).fetchone()
             if latest is None:
                 return None
+            db.execute('DELETE FROM login_attempts WHERE bucket=?', (bucket,))
             db.execute('DELETE FROM auth_sessions WHERE expires_at <= ?', (now,))
             if old_token:
                 db.execute('DELETE FROM auth_sessions WHERE token_hash=?', (digest(old_token),))
@@ -188,4 +196,4 @@ def bootstrap(directory: Path, username: str):
     password = getpass.getpass('New administrator password: ')
     if password != getpass.getpass('Confirm password: '):
         raise ValueError('Passwords did not match.')
-    Accounts(directory).create(username, password, 'ADMIN', bootstrap=True)
+    Accounts(directory).bootstrap_admin(username, password)

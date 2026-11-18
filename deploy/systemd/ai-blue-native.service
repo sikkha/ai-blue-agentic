@@ -1,0 +1,29 @@
+[Unit]
+Description=AI-Blue native authenticated workspace
+After=network.target
+
+[Service]
+Type=simple
+User=ai-blue-native
+Group=ai-blue-native
+WorkingDirectory=/opt/ai-blue/native-current
+StateDirectory=ai-blue-native
+StateDirectoryMode=0700
+Environment=AIBLUE_AUTH_DIR=/var/lib/ai-blue-native/auth
+Environment=AIBLUE_WEB_ORIGIN=https://public.geopolitics.io
+Environment=HF_HOME=/var/lib/ai-blue-native/cache/huggingface
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=OMP_NUM_THREADS=2
+EnvironmentFile=-/etc/ai-blue/provider.env
+ExecStart=/opt/ai-blue/native-current/.venv/bin/python main.py serve --host 127.0.0.1 --port 8186
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target
