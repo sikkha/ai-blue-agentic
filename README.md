@@ -50,7 +50,7 @@ cp .env.example .env          # แล้วใส่ GROQ_API_KEY=... (สม�
 |---|---|
 | สั่งงานหนึ่งครั้งใน terminal | `python main.py run "create a calculator and use it to calculate 15% tip on 240 baht"` |
 | คุยต่อเนื่องใน terminal | `python main.py chat` (บรรทัดว่างหรือ `exit` เพื่อจบ) |
-| ใช้หน้าเว็บ (โน้ต + agent) | `pip install -r requirements-ui.txt -r requirements-rag.txt` แล้ว `npm --prefix frontend ci && npm --prefix frontend run build` (ครั้งเดียว) จากนั้น `python main.py serve` แล้วเปิด http://127.0.0.1:8000 |
+| ใช้หน้าเว็บ (โน้ต + agent) | ติดตั้ง dependencies, build frontend และสร้างผู้ดูแลระบบครั้งแรกตามหัวข้อ [Web UI](#web-ui) จากนั้นเปิด http://localhost:8000 |
 
 agent ทำงานในโฟลเดอร์โน้ต `workspace/` (ตั้งได้ที่ `workspace.dir`; ค่าว่าง = แต่ละ session มีโฟลเดอร์ของตัวเองใน
 `sandbox/runs/`) ส่วนบันทึกของแต่ละ session อยู่ที่ `sandbox/runs/run_NNN/` ก่อนเขียน แก้ ย้าย หรือลบโน้ต และก่อนรันคำสั่ง shell
@@ -645,7 +645,7 @@ python bench/rag/run.py quality                         # benchmark RAG (ดู�
 
 pip install -r requirements-ui.txt                      # ไม่บังคับ: web UI (ดูหัวข้อ Web UI)
 npm --prefix frontend ci && npm --prefix frontend run build         # build หน้าเว็บครั้งเดียว (ต้องมี Node.js 20+)
-python main.py serve                                    # เปิด http://127.0.0.1:8000 (--port เปลี่ยน port)
+python main.py serve                                    # เปิด http://localhost:8000 (--port เปลี่ยน port)
 ```
 
 exit code เป็น `0` เมื่อ reviewer ให้ผ่าน และ `1` ในกรณีอื่น ผลลัพธ์อยู่ใน `sandbox/runs/run_NNN/`
@@ -663,17 +663,21 @@ exit code เป็น `0` เมื่อ reviewer ให้ผ่าน แล
 ## Web UI
 
 ```bash
-pip install -r requirements-ui.txt                 # fastapi, uvicorn, python-multipart, ruamel.yaml, httpx
+pip install -r requirements-ui.txt
 npm --prefix frontend ci && npm --prefix frontend run build    # ครั้งเดียว; Node.js ใช้แค่ตอน build
-python main.py serve                               # http://127.0.0.1:8000
+python main.py bootstrap-admin <username>          # ครั้งเดียว ตั้งรหัสผ่านผ่าน terminal
+python main.py serve                               # http://localhost:8000
 npm --prefix frontend run lint                           # ESLint + @shadcn/lint: className ใช้จัด layout เท่านั้น สีมาจาก theme token
 ```
 
-หน้าเว็บเรียก engine ตัวเดียวกับ CLI (`loop.run_workflow`, `tracedb`, เครื่องมือชุดเดียวกัน, `registry`) — ไม่มี agent loop
+ลงชื่อเข้าใช้ด้วยบัญชีที่ผู้ดูแลสร้างให้ เมนู Users ใช้เปิดสิทธิ์ agent สำหรับบัญชีที่ต้องการ
+แต่ละบัญชีมีโน้ต ประวัติแชต ไฟล์แนบ และการอนุมัติเครื่องมือของตัวเอง การตั้งค่า HTTPS สำหรับใช้งานจริงอยู่ใน
+[คู่มือการติดตั้ง](deploy/native-auth.md)
+
+หน้าเว็บเรียก engine ตัวเดียวกับ CLI (`loop.run_workflow`, `tracedb`, `registry`) — ไม่มี agent loop
 ชุดที่สอง หนึ่งข้อความคือหนึ่ง `run_workflow` ใน worker thread และทุก step ถูกส่งมาที่หน้าเว็บทันทีแบบ
 Server-Sent Events (`session.start`, `step`, `approval`, `file.changed`, `session.end` — รายการและ field อยู่ใน
 `core/agentic_ai/messages/events.py` พร้อมการเทียบกับ event ของ AG-UI) ถ้ายังไม่ได้ build หน้าเว็บ `serve` จะบอกวิธี build
-และ API ยังใช้ได้ที่ `/api/docs`
 
 | ส่วน | แสดงอะไร |
 |---|---|
@@ -927,7 +931,7 @@ RAG ผิด 3 ข้อ: สองข้อหน้าที่ถูกไ�
 - **knowledge graph มีคุณภาพเท่าที่โมเดลสกัดได้** — entity ถูกรวมด้วยการ normalize ชื่อแบบตรงตัว (ของวิชา) เท่านั้น
   "contract" กับ "Radio contract" จึงยังเป็นคนละ node และยังไม่มีชุดคำถามที่รู้คำตอบสำหรับวัดว่า graph ช่วยการค้นได้เท่าไร
   ตัวเลขข้างต้นเป็นการรันจริงบน workspace ตัวอย่าง ไม่ใช่ benchmark
-- **ผู้ใช้คนเดียว** — ไม่มี login, สิทธิ์ต่อโฟลเดอร์ หรือการแก้ไขพร้อมกันหลายคน (การชนกันถูกจับด้วย sha และให้คนเลือก)
+- **workspace แยกตามบัญชี** — ไม่มีการแชร์โฟลเดอร์หรือแก้ไขโน้ตร่วมกันข้ามบัญชี (การชนกันภายในบัญชีถูกจับด้วย sha และให้คนเลือก)
 - **dense search เป็น brute force** — เหมาะกับโน้ตระดับพันถึงหมื่นหัวข้อ ถ้าใหญ่กว่านั้นควรย้ายไป pgvector หรือ sqlite-vec
 - **ตัดช่วงตามคำที่คั่นด้วยช่องว่าง** — ภาษาไทยมีช่องว่างน้อย หนึ่ง "คำ" จึงเป็นวลี ช่วงของเอกสารไทยยาวราวหนึ่งหน้า
   (~1,400 ตัวอักษร) แทนที่จะเป็น 260 คำจริง

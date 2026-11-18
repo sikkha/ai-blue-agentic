@@ -1,3 +1,5 @@
+import { authFetch } from "@/lib/auth"
+
 // The server's contract (server.py). Everything the page knows comes from these calls.
 
 export type ToolState = {
@@ -151,7 +153,7 @@ export type ServerEvent =
 export type FileChange = Extract<ServerEvent, { type: "file.changed" }>
 
 async function call<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init)
+  const res = await authFetch(url, init)
   if (!res.ok) {
     let detail = `${res.status} ${res.statusText}`
     try {
@@ -217,7 +219,7 @@ export async function* chat(body: {
   hint?: boolean
   scope?: string // the folder rag_search looks in by default ("" = the whole workspace)
 }) {
-  const res = await fetch("/api/chat", json("POST", body))
+  const res = await authFetch("/api/chat", json("POST", body))
   if (!res.ok || !res.body) {
     let detail = `${res.status} ${res.statusText}`
     try {

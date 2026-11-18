@@ -3,6 +3,7 @@ __pycache__/
 sandbox/runs/
 sandbox/logs/
 sandbox/trace.db
+sandbox/web-auth/
 .kilo/
 .claude/
 CLAUDE.md

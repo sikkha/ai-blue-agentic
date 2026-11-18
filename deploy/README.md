@@ -9,4 +9,4 @@ Rules:
 - No secrets or real credentials in any file here. Inject via environment or a secret manager.
 - Production configuration templates may live here; real values do not.
 
-Status: empty placeholders.
+Production serves native sign-in at [public.geopolitics.io](https://public.geopolitics.io/). The [native web authentication guide](native-auth.md) records the release, service, TLS proxy, verification, and the TLS overview rollback procedure.

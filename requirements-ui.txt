@@ -5,3 +5,4 @@ uvicorn
 python-multipart
 ruamel.yaml
 httpx
+argon2-cffi

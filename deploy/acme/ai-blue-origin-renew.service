@@ -1,0 +1,11 @@
+[Unit]
+Description=Renew the AI-Blue public origin certificate
+After=network-online.target nginx.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/ai-blue/acme/renew-origin.sh
+TimeoutStartSec=180
+StateDirectory=ai-blue-acme
+StateDirectoryMode=0700

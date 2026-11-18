@@ -41,7 +41,7 @@ class WorkspaceApiTests(unittest.TestCase):
         self.patch = mock.patch.object(tools, "_embedder", rag.HashEmbedder)
         self.patch.start()
         self._call_llm = loop.call_llm
-        self.client = TestClient(server.create_app(str(self.tmp / "workflow.yaml")))
+        self.client = TestClient(server._create_workspace_app(str(self.tmp / "workflow.yaml")))
 
     def tearDown(self):
         loop.call_llm = self._call_llm

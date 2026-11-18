@@ -44,7 +44,7 @@ class ServerTests(unittest.TestCase):
         self.config.write_text(text)
         self.runtime = runtime
         self._call_llm = loop.call_llm
-        self.app = server.create_app(str(self.config))
+        self.app = server._create_workspace_app(str(self.config))
         self.client = TestClient(self.app)
 
     def tearDown(self):

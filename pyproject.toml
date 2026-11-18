@@ -12,7 +12,7 @@ dependencies = ["requests", "pyyaml", "python-dotenv"]   # keep minimal; no agen
 
 [project.optional-dependencies]
 rag = ["pymupdf", "numpy", "faiss-cpu", "sentence-transformers", "networkx", "pillow", "psutil", "pythainlp"]
-ui = ["fastapi", "uvicorn", "python-multipart", "ruamel.yaml", "httpx"]
+ui = ["fastapi", "uvicorn", "python-multipart", "ruamel.yaml", "httpx", "argon2-cffi"]
 dev = ["pytest>=7", "ruff"]
 
 # The reusable core lives in core/agentic_ai/ and is imported as `agentic_ai`.
@@ -22,6 +22,7 @@ include = ["agentic_ai*", "launcher*", "backend*"]
 
 [tool.setuptools.package-data]
 agentic_ai = ["prompts/**/*", "agent_knowledge/**/*", "assets/**/*"]
+backend = ["migrations/*.sql"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

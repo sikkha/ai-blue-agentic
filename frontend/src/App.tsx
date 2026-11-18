@@ -139,11 +139,14 @@ function Bar({ children }: { children: ReactNode }) {
   )
 }
 
-const START = readPage() // what the URL asked for when the page loaded
-
-export function App() {
+export function App({ admin, agentEnabled, accountControls }: {
+  admin: boolean
+  agentEnabled: boolean
+  accountControls: ReactNode
+}) {
+  const [start] = useState(readPage)
   const ws = useWorkspace(toastError)
-  const [scope, setScope] = useState(START.scope)
+  const [scope, setScope] = useState(start.scope)
   const openPath = ws.open?.path ?? null
   // what an empty chat offers: about the open note when there is one, else about the workspace
   const suggestions = useMemo(() => {
@@ -182,7 +185,7 @@ export function App() {
     onFileChanged: ws.onFileChanged,
     suggestions,
   })
-  const [view, setView] = useState<"note" | "graph">(START.view)
+  const [view, setView] = useState<"note" | "graph">(start.view)
   const layout = useDefaultLayout({ id: "aiblue-panels", storage: safeStorage })
   const [mode, setMode] = useState<NoteMode>("edit")
   const [ask, setAsk] = useState<NameAsk | null>(null)
@@ -214,8 +217,8 @@ export function App() {
   const { open: openSession } = agent
   const { openNote: openFile } = ws
   useEffect(() => {
-    if (START.session) openSession(START.session)
-    if (START.note) openFile(START.note)
+    if (start.session) openSession(start.session)
+    if (start.note) openFile(start.note)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only on the first render
   }, [])
   useEffect(() => {
@@ -350,7 +353,8 @@ export function App() {
                   </span>
                 )}
                 <ThemeToggle />
-                <SettingsDialog disabled={agent.running} />
+                {admin && <SettingsDialog disabled={agent.running} />}
+                {accountControls}
                 <PanelToggle
                   side="right"
                   open={chatOpen}
@@ -379,7 +383,7 @@ export function App() {
                     <GraphView
                       data={ws.graph}
                       onOpenNote={openNote}
-                      onBuild={() => ws.buildGraph(scope)}
+                      onBuild={agentEnabled ? () => ws.buildGraph(scope) : undefined}
                       building={ws.building}
                       progress={ws.progress}
                     />
@@ -401,60 +405,64 @@ export function App() {
             className="min-w-0"
           >
             <div className="flex h-full min-h-0 flex-col border-s bg-background">
-              <Bar>
-                <SessionMenu
-                  sessions={agent.sessions}
-                  current={agent.sessionId}
-                  busy={agent.running}
-                  onOpen={agent.open}
-                  onNew={agent.newChat}
-                />
-                <MetersButton meters={agent.meters} />
-                <TraceSheet
-                  sessionId={agent.sessionId}
-                  version={agent.running ? 0 : 1}
-                />
-              </Bar>
-              <div className="flex shrink-0 items-center gap-2 border-b px-3 py-2">
-                <FolderSearchIcon className="size-4 shrink-0 text-muted-foreground" />
-                <Select
-                  value={scope || WHOLE}
-                  onValueChange={(v) => setScope(v === WHOLE ? "" : v)}
-                >
-                  <SelectTrigger
-                    size="sm"
-                    className="min-w-0 flex-1"
-                    aria-label="Where the agent searches"
+              {agentEnabled ? <>
+                <Bar>
+                  <SessionMenu
+                    sessions={agent.sessions}
+                    current={agent.sessionId}
+                    busy={agent.running}
+                    onOpen={agent.open}
+                    onNew={agent.newChat}
+                  />
+                  <MetersButton meters={agent.meters} />
+                  <TraceSheet
+                    sessionId={agent.sessionId}
+                    version={agent.running ? 0 : 1}
+                  />
+                </Bar>
+                <div className="flex shrink-0 items-center gap-2 border-b px-3 py-2">
+                  <FolderSearchIcon className="size-4 shrink-0 text-muted-foreground" />
+                  <Select
+                    value={scope || WHOLE}
+                    onValueChange={(v) => setScope(v === WHOLE ? "" : v)}
                   >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectItem value={WHOLE}>
-                        Search the whole workspace
-                      </SelectItem>
-                      {allFolders.map((f) => (
-                        <SelectItem key={f} value={f}>
-                          Search {f}/
+                    <SelectTrigger
+                      size="sm"
+                      className="min-w-0 flex-1"
+                      aria-label="Where the agent searches"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem value={WHOLE}>
+                          Search the whole workspace
                         </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </div>
-              <main className="min-h-0 flex-1">
-                <ErrorBoundary name="chat">
-                  <AssistantRuntimeProvider runtime={agent.runtime}>
-                    <ToolContext.Provider value={tools}>
-                      <RetryContext.Provider value={agent.retry}>
-                        <NoteLinkContext.Provider value={links}>
-                          <Thread components={COMPONENTS} />
-                        </NoteLinkContext.Provider>
-                      </RetryContext.Provider>
-                    </ToolContext.Provider>
-                  </AssistantRuntimeProvider>
-                </ErrorBoundary>
-              </main>
+                        {allFolders.map((f) => (
+                          <SelectItem key={f} value={f}>
+                            Search {f}/
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <main className="min-h-0 flex-1">
+                  <ErrorBoundary name="chat">
+                    <AssistantRuntimeProvider runtime={agent.runtime}>
+                      <ToolContext.Provider value={tools}>
+                        <RetryContext.Provider value={agent.retry}>
+                          <NoteLinkContext.Provider value={links}>
+                            <Thread components={COMPONENTS} />
+                          </NoteLinkContext.Provider>
+                        </RetryContext.Provider>
+                      </ToolContext.Provider>
+                    </AssistantRuntimeProvider>
+                  </ErrorBoundary>
+                </main>
+              </> : (
+                <p className="p-4 text-sm text-muted-foreground">Agent access is disabled for this account.</p>
+              )}
             </div>
           </ResizablePanel>
         </ResizablePanelGroup>
